@@ -207,9 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 results/*
-*.jpg
-*.png
-*.jpeg
-*.webp
-
 database.db

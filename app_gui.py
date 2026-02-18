@@ -3,6 +3,7 @@ import time
 import threading
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk
 from database import Database
 from scanner import PhotoScanner
 from face_engine import FaceEngine
@@ -11,7 +12,7 @@ from config import FACE_DISTANCE_THRESHOLD, RESULTS_DIR
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# ── Estados da UI ──────────────────────────────────────────────────────
+# -- UI States --
 STATE_IDLE = "idle"
 STATE_SCANNING = "scanning"
 STATE_RESULTS = "results"
@@ -20,9 +21,16 @@ STATE_RESULTS = "results"
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("FaceVault")
+        self.title("Photo Finder")
         self.geometry("1100x700")
         self.minsize(900, 550)
+
+        # Window icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
+        if os.path.exists(icon_path):
+            icon_image = Image.open(icon_path).resize((64, 64))
+            self._icon = ImageTk.PhotoImage(icon_image)
+            self.iconphoto(False, self._icon)
 
         self.db = Database()
         self.engine = FaceEngine()
@@ -34,18 +42,18 @@ class App(ctk.CTk):
         self._load_persons()
         self._refresh_stats()
 
-    # ══════════════════════════════════════════════════════════════════
-    #  CONSTRUÇÃO DA UI
-    # ══════════════════════════════════════════════════════════════════
+    # ==================================================================
+    #  UI CONSTRUCTION
+    # ==================================================================
     def _build_ui(self):
-        # ── Topbar ─────────────────────────────────────────────────────
+        # -- Topbar --
         self.topbar = ctk.CTkFrame(self, height=40, corner_radius=0)
         self.topbar.pack(side="top", fill="x")
         self.topbar.pack_propagate(False)
 
         app_label = ctk.CTkLabel(
             self.topbar,
-            text="🔒 FaceVault",
+            text="📷 Photo Finder",
             font=ctk.CTkFont(size=16, weight="bold"),
         )
         app_label.pack(side="left", padx=15)
@@ -60,25 +68,25 @@ class App(ctk.CTk):
 
         self.status_label = ctk.CTkLabel(
             self.topbar,
-            text="Pronto",
+            text="Ready",
             font=ctk.CTkFont(size=12),
             text_color="#888888",
         )
         self.status_label.pack(side="right", padx=15)
 
-        # ── Container principal ───────────────────────────────────────
+        # -- Main container --
         container = ctk.CTkFrame(self, fg_color="transparent")
         container.pack(side="top", expand=True, fill="both", padx=10, pady=(5, 10))
 
-        # ── Sidebar ───────────────────────────────────────────────────
+        # -- Sidebar --
         self.sidebar = ctk.CTkFrame(container, width=260, corner_radius=10)
         self.sidebar.pack(side="left", fill="y", padx=(0, 10))
         self.sidebar.pack_propagate(False)
 
-        # Seção: Diretório Raiz
+        # Section: Root Directory
         ctk.CTkLabel(
             self.sidebar,
-            text="📂 DIRETÓRIO RAIZ",
+            text="📂 ROOT DIRECTORY",
             font=ctk.CTkFont(size=12, weight="bold"),
             anchor="w",
         ).pack(fill="x", padx=15, pady=(15, 5))
@@ -94,33 +102,33 @@ class App(ctk.CTk):
         self.root_entry.pack(fill="x", padx=15, pady=(0, 5))
 
         self.btn_select = ctk.CTkButton(
-            self.sidebar, text="Selecionar Pasta", command=self.select_root, height=32
+            self.sidebar, text="Select Folder", command=self.select_root, height=32
         )
         self.btn_select.pack(fill="x", padx=15, pady=2)
 
         self.btn_rescan = ctk.CTkButton(
-            self.sidebar, text="⟳  Reescanear", command=self.rescan, height=32
+            self.sidebar, text="⟳  Rescan", command=self.rescan, height=32
         )
         self.btn_rescan.pack(fill="x", padx=15, pady=2)
 
         self.btn_cancel = ctk.CTkButton(
             self.sidebar,
-            text="✕  Cancelar",
+            text="✕  Cancel",
             command=self._cancel_scan,
             height=32,
             fg_color="#8B0000",
             hover_color="#B22222",
         )
-        # Não faz pack ainda — só aparece durante scan
+        # Not packed yet — only visible during scan
 
-        # Separador
+        # Separator
         sep1 = ctk.CTkFrame(self.sidebar, height=2, fg_color="#333333")
         sep1.pack(fill="x", padx=15, pady=12)
 
-        # Seção: Pessoas
+        # Section: Persons
         ctk.CTkLabel(
             self.sidebar,
-            text="👤 PESSOAS",
+            text="👤 PERSONS",
             font=ctk.CTkFont(size=12, weight="bold"),
             anchor="w",
         ).pack(fill="x", padx=15, pady=(0, 5))
@@ -133,7 +141,7 @@ class App(ctk.CTk):
 
         self.btn_search = ctk.CTkButton(
             self.sidebar,
-            text="🔍  Procurar",
+            text="🔍  Search",
             command=self.search,
             height=32,
             fg_color="#1B5E20",
@@ -142,34 +150,34 @@ class App(ctk.CTk):
         self.btn_search.pack(fill="x", padx=15, pady=2)
 
         self.btn_register = ctk.CTkButton(
-            self.sidebar, text="＋  Cadastrar Pessoa", command=self.register_person, height=32
+            self.sidebar, text="＋  Register Person", command=self.register_person, height=32
         )
         self.btn_register.pack(fill="x", padx=15, pady=2)
 
-        # Separador
+        # Separator
         sep2 = ctk.CTkFrame(self.sidebar, height=2, fg_color="#333333")
         sep2.pack(fill="x", padx=15, pady=12)
 
-        # Info na sidebar
+        # Sidebar info
         self.sidebar_info = ctk.CTkLabel(
             self.sidebar,
-            text="100% Offline\nPrivacidade total",
+            text="100% Offline\nFull privacy",
             font=ctk.CTkFont(size=11),
             text_color="#666666",
             justify="center",
         )
         self.sidebar_info.pack(side="bottom", pady=15)
 
-        # ── Área principal ────────────────────────────────────────────
+        # -- Main area --
         self.main = ctk.CTkFrame(container, corner_radius=10)
         self.main.pack(side="right", expand=True, fill="both")
 
-        # Área de progresso (visível durante scan)
+        # Progress area (visible during scan)
         self.progress_frame = ctk.CTkFrame(self.main, fg_color="transparent")
 
         self.progress_title = ctk.CTkLabel(
             self.progress_frame,
-            text="Escaneando fotos...",
+            text="Scanning photos...",
             font=ctk.CTkFont(size=16, weight="bold"),
         )
         self.progress_title.pack(pady=(20, 10))
@@ -180,7 +188,7 @@ class App(ctk.CTk):
 
         self.progress_detail = ctk.CTkLabel(
             self.progress_frame,
-            text="Preparando...",
+            text="Preparing...",
             font=ctk.CTkFont(size=12),
             text_color="#aaaaaa",
         )
@@ -195,7 +203,7 @@ class App(ctk.CTk):
         )
         self.progress_file.pack(pady=2)
 
-        # Área de output/resultados
+        # Output/results area
         self.output_frame = ctk.CTkFrame(self.main, fg_color="transparent")
         self.output_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
@@ -214,24 +222,24 @@ class App(ctk.CTk):
         )
         self.output_box.pack(expand=True, fill="both")
 
-        # Botão de links simbólicos (escondido por padrão)
+        # Symlinks button (hidden by default)
         self.btn_symlinks = ctk.CTkButton(
             self.output_frame,
-            text="📁  Criar pasta com links simbólicos",
+            text="📁  Create folder with symlinks",
             command=self._create_symlinks,
             height=32,
             fg_color="#1565C0",
             hover_color="#1976D2",
         )
 
-        # Estado inicial
+        # Initial state
         self._show_welcome()
 
-    # ══════════════════════════════════════════════════════════════════
-    #  HELPERS DE UI (thread-safe)
-    # ══════════════════════════════════════════════════════════════════
+    # ==================================================================
+    #  UI HELPERS (thread-safe)
+    # ==================================================================
     def _ui(self, fn):
-        """Agenda execução de fn na main thread. Seguro para chamar de qualquer thread."""
+        """Schedule fn to run on the main thread. Safe to call from any thread."""
         self.after(0, fn)
 
     def _set_status(self, text):
@@ -240,26 +248,26 @@ class App(ctk.CTk):
     def _refresh_stats(self):
         photos = self.db.get_photo_count()
         persons = self.db.get_person_count()
-        self.stats_label.configure(text=f"📷 {photos:,} fotos  •  👤 {persons} pessoas")
+        self.stats_label.configure(text=f"📷 {photos:,} photos  •  👤 {persons} persons")
 
     def _show_welcome(self):
-        """Mostra tela inicial quando nenhuma ação está em andamento."""
+        """Show the welcome screen when no action is in progress."""
         root = self.root_path_var.get()
         self.output_header.configure(text="")
         self.output_box.delete("1.0", "end")
 
         if not root:
-            self.output_box.insert("end", "  Bem-vindo ao FaceVault!\n\n")
-            self.output_box.insert("end", "  ← Selecione um diretório raiz para começar.\n")
+            self.output_box.insert("end", "  Welcome to Photo Finder!\n\n")
+            self.output_box.insert("end", "  ← Select a root directory to get started.\n")
         else:
-            self.output_box.insert("end", f"  Diretório raiz: {root}\n\n")
-            self.output_box.insert("end", "  Use os botões à esquerda para:\n")
-            self.output_box.insert("end", "    • Reescanear fotos novas\n")
-            self.output_box.insert("end", "    • Cadastrar uma pessoa\n")
-            self.output_box.insert("end", "    • Procurar uma pessoa nas fotos\n")
+            self.output_box.insert("end", f"  Root directory: {root}\n\n")
+            self.output_box.insert("end", "  Use the buttons on the left to:\n")
+            self.output_box.insert("end", "    • Rescan for new photos\n")
+            self.output_box.insert("end", "    • Register a person\n")
+            self.output_box.insert("end", "    • Search for a person in your photos\n")
 
     def _set_state(self, state):
-        """Gerencia habilitação/desabilitação de botões conforme o estado."""
+        """Manage button enable/disable based on the current state."""
         self._state = state
 
         if state == STATE_SCANNING:
@@ -268,10 +276,10 @@ class App(ctk.CTk):
             self.btn_search.configure(state="disabled")
             self.btn_register.configure(state="disabled")
             self.person_dropdown.configure(state="disabled")
-            # Mostrar botão cancelar
+            # Show cancel button
             self.btn_rescan.pack_forget()
             self.btn_cancel.pack(fill="x", padx=15, pady=2, after=self.btn_select)
-            # Mostrar progresso, esconder output
+            # Show progress, hide output
             self.output_frame.pack_forget()
             self.progress_frame.pack(expand=True, fill="both", padx=10, pady=10)
         else:
@@ -280,16 +288,16 @@ class App(ctk.CTk):
             self.btn_search.configure(state="normal")
             self.btn_register.configure(state="normal")
             self.person_dropdown.configure(state="normal")
-            # Esconder cancelar, mostrar rescan
+            # Hide cancel, show rescan
             self.btn_cancel.pack_forget()
             self.btn_rescan.pack(fill="x", padx=15, pady=2, after=self.btn_select)
-            # Esconder progresso, mostrar output
+            # Hide progress, show output
             self.progress_frame.pack_forget()
             self.output_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-    # ══════════════════════════════════════════════════════════════════
-    #  AÇÕES
-    # ══════════════════════════════════════════════════════════════════
+    # ==================================================================
+    #  ACTIONS
+    # ==================================================================
     def _load_root_path(self):
         path = self.db.get_setting("root_path")
         if path:
@@ -311,31 +319,31 @@ class App(ctk.CTk):
             self.db.set_setting("root_path", path)
             self.root_path_var.set(path)
             self._show_welcome()
-            self._set_status("Diretório selecionado")
+            self._set_status("Directory selected")
 
-    # ── Reescaneamento ────────────────────────────────────────────────
+    # -- Rescan --
     def rescan(self):
         root_path = self.root_path_var.get()
 
         if not root_path:
-            messagebox.showwarning("Aviso", "Selecione um diretório raiz primeiro.")
+            messagebox.showwarning("Warning", "Please select a root directory first.")
             return
 
         if not os.path.exists(root_path):
             messagebox.showerror(
-                "HD não encontrado",
-                f"O diretório não está acessível:\n\n{root_path}\n\n"
-                "Verifique se o HD externo está conectado.",
+                "Drive not found",
+                f"The directory is not accessible:\n\n{root_path}\n\n"
+                "Please check if the external drive is connected.",
             )
             return
 
         self._set_state(STATE_SCANNING)
-        self._set_status("Escaneando...")
+        self._set_status("Scanning...")
         self.progress_bar.set(0)
-        self.progress_detail.configure(text="Listando arquivos...")
+        self.progress_detail.configure(text="Listing files...")
         self.progress_file.configure(text="")
         self._scan_start_time = time.time()
-        self._scan_timestamps = []  # timestamps para média móvel do ETA
+        self._scan_timestamps = []  # timestamps for ETA moving average
 
         def task():
             def progress(processed, total, errors, current_file):
@@ -354,7 +362,7 @@ class App(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def _update_progress(self, processed, total, errors, current_file):
-        """Atualiza a barra de progresso e detalhes. Chamado na main thread."""
+        """Update the progress bar and details. Called on the main thread."""
         if total == 0:
             return
 
@@ -364,7 +372,7 @@ class App(ctk.CTk):
         now = time.time()
         self._scan_timestamps.append(now)
 
-        # ETA com média móvel (últimas 100 fotos)
+        # ETA with moving average (last 100 photos)
         window = 100
         if len(self._scan_timestamps) >= 2:
             ts = self._scan_timestamps[-window:]
@@ -374,52 +382,52 @@ class App(ctk.CTk):
             remaining = per_item * (total - processed)
             eta = self._format_time(remaining)
         else:
-            eta = "calculando..."
+            eta = "calculating..."
 
-        err_text = f"  •  ⚠ {errors} erros" if errors else ""
+        err_text = f"  •  ⚠ {errors} errors" if errors else ""
         self.progress_detail.configure(
-            text=f"{processed:,}/{total:,} fotos  ({pct:.0%}){err_text}  •  Tempo restante: {eta}"
+            text=f"{processed:,}/{total:,} photos  ({pct:.0%}){err_text}  •  Time remaining: {eta}"
         )
 
-        # Mostrar nome curto do arquivo atual
+        # Show short name of current file
         short = os.path.basename(current_file) if current_file else ""
         self.progress_file.configure(text=short)
 
-        self.progress_title.configure(text="Escaneando fotos...")
-        self._set_status(f"Escaneando {processed:,}/{total:,}")
+        self.progress_title.configure(text="Scanning photos...")
+        self._set_status(f"Scanning {processed:,}/{total:,}")
 
     def _show_scan_summary(self, stats):
-        """Mostra resumo do scan na área principal."""
+        """Show scan summary in the main area."""
         elapsed = time.time() - self._scan_start_time
         time_str = self._format_time(elapsed)
 
-        self.output_header.configure(text="Resultado do escaneamento")
+        self.output_header.configure(text="Scan Results")
         self.output_box.delete("1.0", "end")
 
         if stats.get("cancelled"):
-            self.output_box.insert("end", "  ⚠ Escaneamento cancelado pelo usuário.\n\n")
-            self._set_status("Cancelado")
+            self.output_box.insert("end", "  ⚠ Scan cancelled by user.\n\n")
+            self._set_status("Cancelled")
         else:
-            self._set_status("Pronto")
+            self._set_status("Ready")
 
-        self.output_box.insert("end", f"  Tempo total: {time_str}\n\n")
-        self.output_box.insert("end", f"  📷 Fotos novas processadas:  {stats.get('new', 0)}\n")
-        self.output_box.insert("end", f"  😀 Faces encontradas:        {stats.get('faces_found', 0)} (em {stats.get('photos_with_faces', 0)} fotos)\n")
-        self.output_box.insert("end", f"  📦 Fotos movidas detectadas: {stats.get('moved', 0)}\n")
-        self.output_box.insert("end", f"  🗑  Fotos removidas:          {stats.get('removed', 0)}\n")
+        self.output_box.insert("end", f"  Total time: {time_str}\n\n")
+        self.output_box.insert("end", f"  📷 New photos processed:  {stats.get('new', 0)}\n")
+        self.output_box.insert("end", f"  😀 Faces found:           {stats.get('faces_found', 0)} (in {stats.get('photos_with_faces', 0)} photos)\n")
+        self.output_box.insert("end", f"  📦 Moved photos detected: {stats.get('moved', 0)}\n")
+        self.output_box.insert("end", f"  🗑  Photos removed:        {stats.get('removed', 0)}\n")
 
         if stats.get("errors", 0) > 0:
-            self.output_box.insert("end", f"  ⚠  Erros (fotos ignoradas):  {stats['errors']}\n")
+            self.output_box.insert("end", f"  ⚠  Errors (photos skipped): {stats['errors']}\n")
 
     def _cancel_scan(self):
         self.scanner.cancel()
-        self.progress_title.configure(text="Cancelando...")
-        self.progress_detail.configure(text="Aguardando tarefas em andamento finalizarem...")
+        self.progress_title.configure(text="Cancelling...")
+        self.progress_detail.configure(text="Waiting for in-progress tasks to finish...")
         self.btn_cancel.configure(state="disabled")
 
     @staticmethod
     def _format_time(seconds):
-        """Formata segundos em string legível (ex: '1h 23m 45s')."""
+        """Format seconds into a readable string (e.g. '1h 23m 45s')."""
         seconds = int(seconds)
         if seconds < 60:
             return f"{seconds}s"
@@ -429,79 +437,79 @@ class App(ctk.CTk):
         hours, mins = divmod(minutes, 60)
         return f"{hours}h {mins:02d}m {secs:02d}s"
 
-    # ── Cadastro de Pessoa ────────────────────────────────────────────
+    # -- Person Registration --
     def register_person(self):
-        name = ctk.CTkInputDialog(text="Nome da pessoa:", title="Cadastrar Pessoa").get_input()
+        name = ctk.CTkInputDialog(text="Person's name:", title="Register Person").get_input()
         if not name or not name.strip():
             return
 
         name = name.strip()
 
         image_path = filedialog.askopenfilename(
-            title="Selecione uma foto com o rosto da pessoa",
-            filetypes=[("Imagens", "*.jpg *.jpeg *.png")],
+            title="Select a photo with the person's face",
+            filetypes=[("Images", "*.jpg *.jpeg *.png")],
         )
         if not image_path:
             return
 
-        self._set_status("Detectando rosto...")
+        self._set_status("Detecting face...")
 
         embeddings = self.engine.extract_embeddings(image_path)
         if len(embeddings) == 0:
-            messagebox.showerror("Erro", "Nenhum rosto detectado na imagem.")
-            self._set_status("Pronto")
+            messagebox.showerror("Error", "No face detected in the image.")
+            self._set_status("Ready")
             return
         if len(embeddings) > 1:
             messagebox.showerror(
-                "Erro",
-                f"Detectados {len(embeddings)} rostos.\n"
-                "A imagem deve conter exatamente 1 rosto.",
+                "Error",
+                f"{len(embeddings)} faces detected.\n"
+                "The image must contain exactly 1 face.",
             )
-            self._set_status("Pronto")
+            self._set_status("Ready")
             return
 
         try:
             self.db.add_person(name, embeddings[0])
         except Exception as e:
             if "UNIQUE" in str(e):
-                messagebox.showerror("Erro", f"Já existe uma pessoa com o nome '{name}'.")
+                messagebox.showerror("Error", f"A person named '{name}' already exists.")
             else:
-                messagebox.showerror("Erro", f"Erro ao cadastrar: {e}")
-            self._set_status("Pronto")
+                messagebox.showerror("Error", f"Registration error: {e}")
+            self._set_status("Ready")
             return
 
         self._load_persons()
         self._refresh_stats()
-        messagebox.showinfo("Sucesso", f"Pessoa '{name}' cadastrada com sucesso!")
-        self._set_status("Pronto")
+        messagebox.showinfo("Success", f"Person '{name}' registered successfully!")
+        self._set_status("Ready")
 
-    # ── Busca ─────────────────────────────────────────────────────────
+    # -- Search --
     def search(self):
         name = self.person_var.get()
         if not name or name not in self.person_map:
-            messagebox.showwarning("Aviso", "Selecione uma pessoa no dropdown.")
+            messagebox.showwarning("Warning", "Please select a person from the dropdown.")
             return
 
-        self._set_status("Buscando...")
+        self._set_status("Searching...")
 
         person_id = self.person_map[name]
         query_embedding = self.db.get_person_embedding(person_id)
 
         if query_embedding is None:
-            messagebox.showerror("Erro", "Embedding da pessoa não encontrado.")
-            self._set_status("Pronto")
+            messagebox.showerror("Error", "Person embedding not found.")
+            self._set_status("Ready")
             return
 
         db_embeddings, paths = self.db.get_all_face_embeddings()
 
         if len(db_embeddings) == 0:
-            messagebox.showinfo("Info", "Nenhuma foto indexada. Faça um escaneamento primeiro.")
-            self._set_status("Pronto")
+            messagebox.showinfo("Info", "No photos indexed. Please run a scan first.")
+            self._set_status("Ready")
             return
 
         distances = self.engine.compare(query_embedding, db_embeddings)
 
-        # Coletar resultados únicos, guardando a menor distância por foto
+        # Collect unique results, keeping the smallest distance per photo
         photo_best_dist = {}
         for i, d in enumerate(distances):
             if d < FACE_DISTANCE_THRESHOLD:
@@ -509,29 +517,31 @@ class App(ctk.CTk):
                 if path not in photo_best_dist or d < photo_best_dist[path]:
                     photo_best_dist[path] = d
 
-        # Ordenar por proximidade (menor distância = mais parecido)
+        # Sort by proximity (smaller distance = more similar)
         self._search_results = sorted(photo_best_dist.keys(), key=lambda p: photo_best_dist[p])
+        self._search_distances = photo_best_dist
 
         self._search_person = name
         self._set_state(STATE_RESULTS)
 
         self.output_header.configure(
-            text=f"Resultados para '{name}' — {len(self._search_results)} fotos encontradas"
+            text=f"Results for '{name}' — {len(self._search_results)} photos found"
         )
         self.output_box.delete("1.0", "end")
 
         if self._search_results:
             for path in self._search_results:
-                self.output_box.insert("end", path + "\n")
+                dist = photo_best_dist[path]
+                self.output_box.insert("end", f"  [{dist:.3f}]  {path}\n")
             self.btn_symlinks.pack(fill="x", pady=(10, 0))
         else:
-            self.output_box.insert("end", "  Nenhuma foto encontrada para esta pessoa.\n")
+            self.output_box.insert("end", "  No photos found for this person.\n")
             self.btn_symlinks.pack_forget()
 
-        self._set_status(f"Encontradas {len(self._search_results)} fotos")
+        self._set_status(f"Found {len(self._search_results)} photos")
 
     def _create_symlinks(self):
-        """Cria pasta com links simbólicos para os resultados da busca."""
+        """Create a folder with symbolic links for the search results."""
         if not hasattr(self, "_search_results") or not self._search_results:
             return
 
@@ -542,17 +552,28 @@ class App(ctk.CTk):
 
         created = 0
         for path in self._search_results:
-            link_path = os.path.join(target_dir, os.path.basename(path))
-            if not os.path.exists(link_path):
-                try:
-                    os.symlink(path, link_path)
-                    created += 1
-                except OSError:
-                    pass
+            dist = self._search_distances.get(path, 0)
+            base = os.path.basename(path)
+            stem, ext = os.path.splitext(base)
+            link_name = f"{dist:.3f}_{stem}{ext}"
+            link_path = os.path.join(target_dir, link_name)
+
+            # Resolve name collisions
+            counter = 2
+            while os.path.exists(link_path):
+                link_name = f"{dist:.3f}_{stem}_{counter}{ext}"
+                link_path = os.path.join(target_dir, link_name)
+                counter += 1
+
+            try:
+                os.symlink(path, link_path)
+                created += 1
+            except OSError:
+                pass
 
         messagebox.showinfo(
-            "Pronto",
-            f"Criados {created} links em:\n{os.path.abspath(target_dir)}",
+            "Done",
+            f"Created {created} links in:\n{os.path.abspath(target_dir)}",
         )
 
 

@@ -121,9 +121,9 @@ class Database:
             self.conn.commit()
 
     def find_photo_by_fingerprint(self, file_size, last_modified):
-        """Busca foto por size+mtime para detectar arquivos movidos.
+        """Find photo by size+mtime to detect moved files.
 
-        Retorna (file_path,) ou None.
+        Returns (file_path,) or None.
         """
         with self._lock:
             cursor = self.conn.cursor()
@@ -134,9 +134,9 @@ class Database:
             return cursor.fetchone()
 
     def remove_missing_photos(self, existing_paths):
-        """Remove do banco fotos que não existem mais no disco.
+        """Remove photos from the database that no longer exist on disk.
 
-        Usa batch delete para performance.
+        Uses batch delete for performance.
         """
         with self._lock:
             cursor = self.conn.cursor()
@@ -168,14 +168,14 @@ class Database:
             return cursor.fetchall()
 
     def get_photo_count(self):
-        """Retorna quantidade de fotos indexadas."""
+        """Returns the number of indexed photos."""
         with self._lock:
             cursor = self.conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM photos")
             return cursor.fetchone()[0]
 
     def get_person_count(self):
-        """Retorna quantidade de pessoas cadastradas."""
+        """Returns the number of registered persons."""
         with self._lock:
             cursor = self.conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM persons")

@@ -1,20 +1,20 @@
 import os
 
-# Banco
+# Database
 DATABASE_PATH = "database.db"
 
-# Threshold para comparação facial (distância euclidiana)
+# Face comparison threshold (euclidean distance)
 FACE_DISTANCE_THRESHOLD = 1.15
 
-# Redimensionamento
+# Image resizing
 MAX_IMAGE_WIDTH = 1600
 RESIZE_WIDTH = 1000
 
-# Extensões válidas
+# Valid extensions
 VALID_EXTENSIONS = (".jpg", ".jpeg", ".png")
 
 # Threads
 MAX_WORKERS = max(1, (os.cpu_count() or 4) - 1)
 
-# Pasta de resultados
+# Results directory
 RESULTS_DIR = "results"

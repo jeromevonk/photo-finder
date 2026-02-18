@@ -17,11 +17,10 @@ class FaceEngine:
         return img
 
     def extract_embeddings(self, image_path):
-        """Extrai embeddings faciais de uma imagem.
+        """Extract face embeddings from an image.
 
-        Retorna lista vazia se a imagem não puder ser lida ou se ocorrer
-        qualquer erro durante a detecção (imagem corrompida, formato
-        inválido, etc).
+        Returns an empty list if the image cannot be read or if any
+        error occurs during detection (corrupted image, invalid format, etc).
         """
         try:
             img = cv2.imread(image_path)
@@ -34,7 +33,7 @@ class FaceEngine:
             embeddings = []
             for face in faces:
                 emb = face.embedding.astype(np.float32)
-                # Normalizar para vetor unitário (essencial para ArcFace)
+                # Normalize to unit vector (essential for ArcFace)
                 norm = np.linalg.norm(emb)
                 if norm > 0:
                     emb = emb / norm
@@ -42,26 +41,26 @@ class FaceEngine:
 
             return embeddings
         except Exception:
-            # Imagem corrompida, formato inválido, etc.
+            # Corrupted image, invalid format, etc.
             return []
 
     def compare(self, query_embedding, database_embeddings):
-        """Compara um embedding contra uma matriz de embeddings.
+        """Compare one embedding against a matrix of embeddings.
 
-        Normaliza ambos os lados antes de calcular a distância
-        euclidiana, garantindo valores no intervalo [0, 2].
+        Normalizes both sides before computing the Euclidean distance,
+        ensuring values in the range [0, 2].
         """
         if len(database_embeddings) == 0:
             return np.array([])
 
-        # Normalizar query
+        # Normalize query
         q_norm = np.linalg.norm(query_embedding)
         if q_norm > 0:
             query_embedding = query_embedding / q_norm
 
-        # Normalizar cada embedding do banco
+        # Normalize each database embedding
         norms = np.linalg.norm(database_embeddings, axis=1, keepdims=True)
-        norms = np.maximum(norms, 1e-10)  # evitar divisão por zero
+        norms = np.maximum(norms, 1e-10)  # avoid division by zero
         database_embeddings = database_embeddings / norms
 
         distances = np.linalg.norm(database_embeddings - query_embedding, axis=1)

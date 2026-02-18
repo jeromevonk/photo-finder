@@ -11,7 +11,7 @@ class PhotoScanner:
         self._cancel_requested = False
 
     def cancel(self):
-        """Sinaliza para o scan em andamento parar."""
+        """Signal the ongoing scan to stop."""
         self._cancel_requested = True
 
     @property
@@ -19,20 +19,20 @@ class PhotoScanner:
         return self._cancel_requested
 
     def scan(self, root_path, progress_callback=None):
-        """Escaneia diretório raiz detectando fotos novas, movidas e removidas.
+        """Scan root directory detecting new, moved, and removed photos.
 
         Args:
-            root_path: Caminho do diretório raiz.
-            progress_callback: Função(processed, total, errors, current_file)
-                chamada a cada foto processada.
+            root_path: Path to the root directory.
+            progress_callback: Function(processed, total, errors, current_file)
+                called after each photo is processed.
 
         Returns:
-            dict com estatísticas: new, moved, removed, errors, cancelled.
+            dict with statistics: new, moved, removed, errors, cancelled.
         """
         self._cancel_requested = False
         stats = {"new": 0, "moved": 0, "removed": 0, "errors": 0, "cancelled": False, "faces_found": 0, "photos_with_faces": 0}
 
-        # 1. Listar todas as fotos no disco
+        # 1. List all photos on disk
         all_files = []
         for root, _, files in os.walk(root_path):
             if self._cancel_requested:
@@ -44,22 +44,22 @@ class PhotoScanner:
 
         current_paths = set(all_files)
 
-        # 2. Obter fotos já indexadas
+        # 2. Get already indexed photos
         existing = {path: (size, mtime) for path, size, mtime in self.db.get_all_photos()}
         existing_paths = set(existing.keys())
 
-        # 3. Detectar fotos removidas e movidas
+        # 3. Detect removed and moved photos
         missing_paths = existing_paths - current_paths
         candidate_new = current_paths - existing_paths
 
-        # Construir fingerprint index das fotos "removidas" para detectar movidas
+        # Build fingerprint index of "removed" photos to detect moved ones
         missing_fingerprints = {}
         for path in missing_paths:
             size, mtime = existing[path]
             key = (size, mtime)
             missing_fingerprints[key] = path
 
-        # Tentar casar novas com removidas pelo fingerprint (size + mtime)
+        # Try to match new with removed by fingerprint (size + mtime)
         truly_new = []
         moved_mappings = []  # (old_path, new_path)
 
@@ -79,23 +79,23 @@ class PhotoScanner:
             except OSError:
                 truly_new.append(new_path)
 
-        # 4. Aplicar movimentações
+        # 4. Apply move mappings
         for old_path, new_path in moved_mappings:
             self.db.update_photo_path(old_path, new_path)
             stats["moved"] += 1
 
-        # 5. Remover fotos que sumiram de verdade (não foram movidas)
+        # 5. Remove photos that are truly gone (not moved)
         still_missing = set(missing_fingerprints.values())
         if still_missing:
             self.db.remove_missing_photos(current_paths)
             stats["removed"] = len(still_missing)
 
-        # 6. Processar fotos novas
+        # 6. Process new photos
         total = len(truly_new)
         processed = 0
 
         def process(path):
-            """Processa uma foto individual: extrai metadados e embeddings."""
+            """Process a single photo: extract metadata and embeddings."""
             try:
                 size = os.path.getsize(path)
                 mtime = int(os.path.getmtime(path))
@@ -104,7 +104,7 @@ class PhotoScanner:
                 embeddings = self.engine.extract_embeddings(path)
                 for emb in embeddings:
                     self.db.add_face(photo_id, emb)
-                return len(embeddings)  # Número de faces encontradas
+                return len(embeddings)  # Number of faces found
             except Exception as e:
                 return str(e)
 
