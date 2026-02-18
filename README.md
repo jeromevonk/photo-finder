@@ -136,6 +136,16 @@ photo-finder/
 
 ---
 
+## 🪟 Windows Compatibility
+
+While Photo Finder is cross-platform, there is one important note for Windows users regarding the **Symlink Export** feature:
+
+- **Permissions**: By default, Windows restricts the creation of symbolic links to **Administrators**.
+- **The Fix**: To create symlinks without running the app as Administrator, you must enable **Developer Mode** in Windows Settings (*Settings > Update & Security > For developers* on Win10, or *Settings > System > For developers* on Win11).
+- **Fallback**: If the app lacks permissions to create symlinks, the "Create folder" button will finish without adding the files to the results folder.
+
+---
+
 ## 🔒 Privacy
 
 Photo Finder is designed with privacy as a core principle:

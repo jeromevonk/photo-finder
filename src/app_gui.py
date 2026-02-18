@@ -578,6 +578,7 @@ class App(ctk.CTk):
         os.makedirs(target_dir, exist_ok=True)
 
         created = 0
+        failed_count = 0
         for path in self._search_results:
             dist = self._search_distances.get(path, 0)
             base = os.path.basename(path)
@@ -595,13 +596,24 @@ class App(ctk.CTk):
             try:
                 os.symlink(path, link_path)
                 created += 1
-            except OSError:
-                pass
+            except OSError as e:
+                failed_count += 1
+                # If this is Windows and error 1314 (Privilege not held)
+                if hasattr(e, "winerror") and e.winerror == 1314:
+                    messagebox.showerror(
+                        "Permission Error",
+                        "Windows requires Developer Mode or Administrator privileges to create symbolic links.\n\n"
+                        "Please enable Developer Mode in Windows Settings to use this feature."
+                    )
+                    return
 
-        messagebox.showinfo(
-            "Done",
-            f"Created {created} links in:\n{os.path.abspath(target_dir)}",
-        )
+        if created > 0:
+            messagebox.showinfo(
+                "Done",
+                f"Created {created} links in:\n{os.path.abspath(target_dir)}",
+            )
+        elif failed_count > 0:
+            messagebox.showwarning("Warning", f"Failed to create {failed_count} links. Check permissions.")
 
 
 if __name__ == "__main__":
