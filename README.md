@@ -52,7 +52,8 @@ pip install -r requirements.txt
 
 ```bash
 source venv/bin/activate
-python app_gui.py
+source venv/bin/activate
+python src/app_gui.py
 ```
 
 Or use the provided shell script:
@@ -89,6 +90,19 @@ chmod +x run_photo_finder.sh
 
 The app uses a **fingerprint-based move detection** system (file size + modification time) to efficiently handle photos that were reorganized without re-processing them.
 
+### 📏 Understanding Face Distance
+
+The matching is based on the **Euclidean Distance** between face embeddings (512-dimensional vectors).
+
+- **Normalized Vectors**: All embeddings are normalized to unit length, meaning the distance between any two faces will always fall between `0.0` and `2.0`.
+- **Match Threshold**: By default, the app uses a threshold of `1.15`.
+  - **< 0.8**: Extremely high confidence (often the same person in similar lighting).
+  - **0.8 - 1.1**: Strong match (same person, different angles/years).
+  - **1.1 - 1.2**: Potential match (may include some false positives).
+  - **> 1.2**: Likely different people.
+
+You can fine-tune this in `src/config.py` by adjusting `FACE_DISTANCE_THRESHOLD`.
+
 ---
 
 ## ⚙️ Configuration
@@ -108,14 +122,16 @@ Edit `config.py` to adjust:
 
 ```
 photo-finder/
-├── app_gui.py           # Main GUI application
-├── config.py            # Configuration constants
-├── database.py          # SQLite database layer (thread-safe)
-├── face_engine.py       # Face detection & embedding extraction
-├── scanner.py           # Photo scanner with move/delete detection
-├── requirements.txt     # Python dependencies
-├── icon.png             # Application icon
-└── run_photo_finder.sh  # Launch script
+├── src/
+│   ├── app_gui.py       # Main GUI application
+│   ├── config.py        # Configuration & Thresholds
+│   ├── database.py      # SQLite layer
+│   ├── face_engine.py   # AI Engine (InsightFace)
+│   └── scanner.py       # Fast photo indexing
+├── database.db          # Your local face index
+├── icon.png             # App icon
+├── requirements.txt     # Dependencies
+└── run_photo_finder.sh  # Launcher script
 ```
 
 ---

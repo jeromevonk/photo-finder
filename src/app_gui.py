@@ -15,6 +15,7 @@ ctk.set_default_color_theme("blue")
 # -- UI States --
 STATE_IDLE = "idle"
 STATE_SCANNING = "scanning"
+STATE_SEARCHING = "searching"
 STATE_RESULTS = "results"
 
 
@@ -25,8 +26,9 @@ class App(ctk.CTk):
         self.geometry("1100x700")
         self.minsize(900, 550)
 
-        # Window icon
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
+        # Window icon (look in project root)
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(root_dir, "icon.png")
         if os.path.exists(icon_path):
             icon_image = Image.open(icon_path).resize((64, 64))
             self._icon = ImageTk.PhotoImage(icon_image)
@@ -282,6 +284,16 @@ class App(ctk.CTk):
             # Show progress, hide output
             self.output_frame.pack_forget()
             self.progress_frame.pack(expand=True, fill="both", padx=10, pady=10)
+        elif state == STATE_SEARCHING:
+            self.btn_select.configure(state="disabled")
+            self.btn_rescan.configure(state="disabled")
+            self.btn_search.configure(state="disabled")
+            self.btn_register.configure(state="disabled")
+            self.person_dropdown.configure(state="disabled")
+            # Clear output for new search
+            self.output_header.configure(text="Searching...")
+            self.output_box.delete("1.0", "end")
+            self.btn_symlinks.pack_forget()
         else:
             self.btn_select.configure(state="normal")
             self.btn_rescan.configure(state="normal")
@@ -490,55 +502,70 @@ class App(ctk.CTk):
             messagebox.showwarning("Warning", "Please select a person from the dropdown.")
             return
 
+        self._set_state(STATE_SEARCHING)
         self._set_status("Searching...")
 
         person_id = self.person_map[name]
-        query_embedding = self.db.get_person_embedding(person_id)
 
-        if query_embedding is None:
-            messagebox.showerror("Error", "Person embedding not found.")
-            self._set_status("Ready")
-            return
+        def task():
+            query_embedding = self.db.get_person_embedding(person_id)
 
-        db_embeddings, paths = self.db.get_all_face_embeddings()
+            if query_embedding is None:
+                def on_error():
+                    messagebox.showerror("Error", "Person embedding not found.")
+                    self._set_state(STATE_IDLE)
+                    self._set_status("Ready")
+                self._ui(on_error)
+                return
 
-        if len(db_embeddings) == 0:
-            messagebox.showinfo("Info", "No photos indexed. Please run a scan first.")
-            self._set_status("Ready")
-            return
+            db_embeddings, paths = self.db.get_all_face_embeddings()
 
-        distances = self.engine.compare(query_embedding, db_embeddings)
+            if len(db_embeddings) == 0:
+                def on_empty():
+                    messagebox.showinfo("Info", "No photos indexed. Please run a scan first.")
+                    self._set_state(STATE_IDLE)
+                    self._set_status("Ready")
+                self._ui(on_empty)
+                return
 
-        # Collect unique results, keeping the smallest distance per photo
-        photo_best_dist = {}
-        for i, d in enumerate(distances):
-            if d < FACE_DISTANCE_THRESHOLD:
-                path = paths[i]
-                if path not in photo_best_dist or d < photo_best_dist[path]:
-                    photo_best_dist[path] = d
+            distances = self.engine.compare(query_embedding, db_embeddings)
 
-        # Sort by proximity (smaller distance = more similar)
-        self._search_results = sorted(photo_best_dist.keys(), key=lambda p: photo_best_dist[p])
-        self._search_distances = photo_best_dist
+            # Collect unique results, keeping the smallest distance per photo
+            photo_best_dist = {}
+            for i, d in enumerate(distances):
+                if d < FACE_DISTANCE_THRESHOLD:
+                    path = paths[i]
+                    if path not in photo_best_dist or d < photo_best_dist[path]:
+                        photo_best_dist[path] = d
 
-        self._search_person = name
-        self._set_state(STATE_RESULTS)
+            # Sort by proximity (smaller distance = more similar)
+            results = sorted(photo_best_dist.keys(), key=lambda p: photo_best_dist[p])
 
-        self.output_header.configure(
-            text=f"Results for '{name}' — {len(self._search_results)} photos found"
-        )
-        self.output_box.delete("1.0", "end")
+            def on_done():
+                self._search_results = results
+                self._search_distances = photo_best_dist
+                self._search_person = name
+                self._set_state(STATE_RESULTS)
 
-        if self._search_results:
-            for path in self._search_results:
-                dist = photo_best_dist[path]
-                self.output_box.insert("end", f"  [{dist:.3f}]  {path}\n")
-            self.btn_symlinks.pack(fill="x", pady=(10, 0))
-        else:
-            self.output_box.insert("end", "  No photos found for this person.\n")
-            self.btn_symlinks.pack_forget()
+                self.output_header.configure(
+                    text=f"Results for '{name}' — {len(self._search_results)} photos found"
+                )
+                self.output_box.delete("1.0", "end")
 
-        self._set_status(f"Found {len(self._search_results)} photos")
+                if self._search_results:
+                    for path in self._search_results:
+                        dist = photo_best_dist[path]
+                        self.output_box.insert("end", f"  [{dist:.3f}]  {path}\n")
+                    self.btn_symlinks.pack(fill="x", pady=(10, 0))
+                else:
+                    self.output_box.insert("end", "  No photos found for this person.\n")
+                    self.btn_symlinks.pack_forget()
+
+                self._set_status(f"Found {len(self._search_results)} photos")
+
+            self._ui(on_done)
+
+        threading.Thread(target=task, daemon=True).start()
 
     def _create_symlinks(self):
         """Create a folder with symbolic links for the search results."""
