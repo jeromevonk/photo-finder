@@ -130,16 +130,21 @@ class App(ctk.CTk):
         # Section: Persons
         ctk.CTkLabel(
             self.sidebar,
-            text="👤 PERSONS",
+            text="👤 PERSONS (select one or more)",
             font=ctk.CTkFont(size=12, weight="bold"),
             anchor="w",
         ).pack(fill="x", padx=15, pady=(0, 5))
 
-        self.person_var = ctk.StringVar()
-        self.person_dropdown = ctk.CTkOptionMenu(
-            self.sidebar, variable=self.person_var, height=32
+        # Scrollable frame with checkboxes for multi-person selection
+        self.person_scroll = ctk.CTkScrollableFrame(
+            self.sidebar, height=120, corner_radius=6,
+            fg_color=("#2b2b2b", "#2b2b2b"),
         )
-        self.person_dropdown.pack(fill="x", padx=15, pady=(0, 5))
+        self.person_scroll.pack(fill="x", padx=15, pady=(0, 5))
+
+        # Will hold {name: ctk.BooleanVar}
+        self.person_check_vars = {}
+        self.person_checkboxes = []
 
         self.btn_search = ctk.CTkButton(
             self.sidebar,
@@ -277,7 +282,7 @@ class App(ctk.CTk):
             self.btn_rescan.configure(state="disabled")
             self.btn_search.configure(state="disabled")
             self.btn_register.configure(state="disabled")
-            self.person_dropdown.configure(state="disabled")
+            self._set_checkboxes_state("disabled")
             # Show cancel button
             self.btn_rescan.pack_forget()
             self.btn_cancel.pack(fill="x", padx=15, pady=2, after=self.btn_select)
@@ -289,7 +294,7 @@ class App(ctk.CTk):
             self.btn_rescan.configure(state="disabled")
             self.btn_search.configure(state="disabled")
             self.btn_register.configure(state="disabled")
-            self.person_dropdown.configure(state="disabled")
+            self._set_checkboxes_state("disabled")
             # Clear output for new search
             self.output_header.configure(text="Searching...")
             self.output_box.delete("1.0", "end")
@@ -299,7 +304,7 @@ class App(ctk.CTk):
             self.btn_rescan.configure(state="normal")
             self.btn_search.configure(state="normal")
             self.btn_register.configure(state="normal")
-            self.person_dropdown.configure(state="normal")
+            self._set_checkboxes_state("normal")
             # Hide cancel, show rescan
             self.btn_cancel.pack_forget()
             self.btn_rescan.pack(fill="x", padx=15, pady=2, after=self.btn_select)
@@ -319,11 +324,40 @@ class App(ctk.CTk):
         persons = self.db.get_persons()
         self.person_map = {name: pid for pid, name in persons}
         names = list(self.person_map.keys())
-        self.person_dropdown.configure(values=names)
-        if names:
-            self.person_var.set(names[0])
-        else:
-            self.person_var.set("")
+
+        # Clear existing checkboxes
+        for cb in self.person_checkboxes:
+            cb.destroy()
+        self.person_checkboxes.clear()
+        self.person_check_vars.clear()
+
+        # Create a checkbox for each person
+        for name in names:
+            var = ctk.BooleanVar(value=False)
+            cb = ctk.CTkCheckBox(
+                self.person_scroll,
+                text=name,
+                variable=var,
+                font=ctk.CTkFont(size=12),
+                height=28,
+                corner_radius=4,
+            )
+            cb.pack(fill="x", padx=5, pady=2)
+            self.person_check_vars[name] = var
+            self.person_checkboxes.append(cb)
+
+    def _set_checkboxes_state(self, state):
+        """Enable or disable all person checkboxes."""
+        for cb in self.person_checkboxes:
+            cb.configure(state=state)
+
+    def _get_selected_persons(self):
+        """Return list of (name, person_id) for all checked persons."""
+        selected = []
+        for name, var in self.person_check_vars.items():
+            if var.get():
+                selected.append((name, self.person_map[name]))
+        return selected
 
     def select_root(self):
         path = filedialog.askdirectory()
@@ -497,27 +531,19 @@ class App(ctk.CTk):
 
     # -- Search --
     def search(self):
-        name = self.person_var.get()
-        if not name or name not in self.person_map:
-            messagebox.showwarning("Warning", "Please select a person from the dropdown.")
+        selected = self._get_selected_persons()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select at least one person.")
             return
 
         self._set_state(STATE_SEARCHING)
         self._set_status("Searching...")
 
-        person_id = self.person_map[name]
+        # Build list of (name, person_id)
+        search_persons = selected  # [(name, pid), ...]
 
         def task():
-            query_embedding = self.db.get_person_embedding(person_id)
-
-            if query_embedding is None:
-                def on_error():
-                    messagebox.showerror("Error", "Person embedding not found.")
-                    self._set_state(STATE_IDLE)
-                    self._set_status("Ready")
-                self._ui(on_error)
-                return
-
+            # Load all embeddings once — shared across all person queries
             db_embeddings, paths = self.db.get_all_face_embeddings()
 
             if len(db_embeddings) == 0:
@@ -528,40 +554,93 @@ class App(ctk.CTk):
                 self._ui(on_empty)
                 return
 
-            distances = self.engine.compare(query_embedding, db_embeddings)
+            # For each person, find the set of matching photos
+            per_person_photos = {}  # name -> {path: best_dist}
 
-            # Collect unique results, keeping the smallest distance per photo
-            photo_best_dist = {}
-            for i, d in enumerate(distances):
-                if d < FACE_DISTANCE_THRESHOLD:
-                    path = paths[i]
-                    if path not in photo_best_dist or d < photo_best_dist[path]:
-                        photo_best_dist[path] = d
+            for person_name, person_id in search_persons:
+                query_embedding = self.db.get_person_embedding(person_id)
 
-            # Sort by proximity (smaller distance = more similar)
-            results = sorted(photo_best_dist.keys(), key=lambda p: photo_best_dist[p])
+                if query_embedding is None:
+                    def on_error(n=person_name):
+                        messagebox.showerror("Error", f"Embedding not found for '{n}'.")
+                        self._set_state(STATE_IDLE)
+                        self._set_status("Ready")
+                    self._ui(on_error)
+                    return
+
+                distances = self.engine.compare(query_embedding, db_embeddings)
+
+                photo_best_dist = {}
+                for i, d in enumerate(distances):
+                    if d < FACE_DISTANCE_THRESHOLD:
+                        path = paths[i]
+                        if path not in photo_best_dist or d < photo_best_dist[path]:
+                            photo_best_dist[path] = d
+
+                per_person_photos[person_name] = photo_best_dist
+
+            # Intersection: photos that match ALL selected persons
+            photo_sets = [set(ppd.keys()) for ppd in per_person_photos.values()]
+            common_photos = photo_sets[0]
+            for s in photo_sets[1:]:
+                common_photos &= s
+
+            # For ranking, use the maximum (worst) best-distance across persons
+            # so the "best" results are photos where every person is very close.
+            combined_dist = {}
+            for path in common_photos:
+                worst = max(ppd[path] for ppd in per_person_photos.values())
+                combined_dist[path] = worst
+
+            results = sorted(common_photos, key=lambda p: combined_dist[p])
+
+            # Build per-person distances for display
+            per_person_result_dist = {}
+            for person_name in per_person_photos:
+                per_person_result_dist[person_name] = {
+                    p: per_person_photos[person_name][p] for p in common_photos
+                }
+
+            names_label = " + ".join(n for n, _ in search_persons)
 
             def on_done():
                 self._search_results = results
-                self._search_distances = photo_best_dist
-                self._search_person = name
+                self._search_distances = combined_dist
+                self._search_person = names_label
                 self._set_state(STATE_RESULTS)
 
                 self.output_header.configure(
-                    text=f"Results for '{name}' — {len(self._search_results)} photos found"
+                    text=f"Results for '{names_label}' — {len(results)} photos found"
                 )
                 self.output_box.delete("1.0", "end")
 
-                if self._search_results:
-                    for path in self._search_results:
-                        dist = photo_best_dist[path]
-                        self.output_box.insert("end", f"  [{dist:.3f}]  {path}\n")
+                if results:
+                    # Column header with person names
+                    person_names = [n for n, _ in search_persons]
+                    if len(person_names) > 1:
+                        header_parts = [f"  {'  '.join(f'[{n[:8]:^8s}]' for n in person_names)}  Path"]
+                        self.output_box.insert("end", header_parts[0] + "\n")
+                        self.output_box.insert("end", "  " + "-" * 60 + "\n")
+
+                    for path in results:
+                        if len(person_names) > 1:
+                            dists = "  ".join(
+                                f"[{per_person_result_dist[n][path]:.3f}  ]"
+                                for n in person_names
+                            )
+                            self.output_box.insert("end", f"  {dists}  {path}\n")
+                        else:
+                            dist = combined_dist[path]
+                            self.output_box.insert("end", f"  [{dist:.3f}]  {path}\n")
                     self.btn_symlinks.pack(fill="x", pady=(10, 0))
                 else:
-                    self.output_box.insert("end", "  No photos found for this person.\n")
+                    if len(search_persons) > 1:
+                        self.output_box.insert("end", "  No photos found with all selected persons together.\n")
+                    else:
+                        self.output_box.insert("end", "  No photos found for this person.\n")
                     self.btn_symlinks.pack_forget()
 
-                self._set_status(f"Found {len(self._search_results)} photos")
+                self._set_status(f"Found {len(results)} photos")
 
             self._ui(on_done)
 
